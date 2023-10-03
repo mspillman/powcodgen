@@ -1,8 +1,8 @@
 import torch
-import positions
-import intensities
-import shapes
-import backgroundnoise
+from . import positions
+from . import intensity
+from . import shapes
+from . import backgroundnoise
 
 def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
                     perturbation_stddev=0.05, zpemin=0.03, zpemax=0.03, wavelength=1.54056):
@@ -27,15 +27,15 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     reciprocal_lattice_metric_tensor = positions.get_recip_lattice_metric_tensor(reciprocal_lattice_matrix)
     d_spacing = positions.get_d_spacing(reciprocal_lattice_metric_tensor, hkl)
     zpe = positions.get_zero_point_error(batchsize, device, dtype, zpemin=zpemin, zpemax=zpemax)
-    twotheta = zpe + d_to_tt(d_spacing, wavelength)
+    twotheta = zpe + positions.d_to_tt(d_spacing, wavelength)
 
     return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing
 
 def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities, PO_std=0.1):
     # Now apply PO perturbation to the peak intensities
-    cosP, sinP, MDfactor, PO_axis = intensities.get_MD_PO_components(hkl,
+    cosP, sinP, MDfactor, PO_axis = intensity.get_MD_PO_components(hkl,
                                     reciprocal_lattice_metric_tensor, dspacing, factor_std=PO_std)
-    intensities = intensities.apply_MD_PO_correction(intensities, cosP, sinP, MDfactor)
+    intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP, MDfactor)
     return torch.nan_to_num(intensities)
 
 def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0004,
@@ -75,6 +75,8 @@ def calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=
     twotheta[twotheta == 0] = torch.inf
     twotheta[twotheta < 4] = torch.inf
     twotheta[twotheta > 44] = torch.inf
+    device = x.device
+    dtype = x.dtype
     peakidx = torch.abs((x[0] + twotheta) - full_data).min(dim=-1).indices
     full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=dtype)
     full_pattern = full_pattern.scatter_(2,
