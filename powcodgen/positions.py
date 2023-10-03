@@ -1,5 +1,6 @@
 import torch
 
+
 def get_unit_cell_perturbation(crystal_systems, dtype=torch.float32, stddev=0.05):
     """Generate a perturbation for the unit cell lengths and angles for a given
     crystal system.
@@ -81,7 +82,7 @@ def get_lattice_matrix(unit_cell_dimensions):
 
     return matrix, valid
 
-#| code-fold: true
+
 def get_recip_lattice_metric_tensor(recip_lattice_matrix):
     """Calculate the reciprocal lattice metric tensor
 

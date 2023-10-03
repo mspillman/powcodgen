@@ -1,4 +1,7 @@
-def get_noise(calculated_patterns, noise_min = 0.0001, noise_max = 0.0025):
+import torch
+
+
+def get_noise(calculated_patterns, noise_min=0.0001, noise_max=0.0025):
     """Get noise for the diffraction patterns to simulate experimental data
 
     Args:
@@ -15,7 +18,7 @@ def get_noise(calculated_patterns, noise_min = 0.0001, noise_max = 0.0025):
     batchsize = calculated_patterns.shape[0]
     device = calculated_patterns.device
     dtype = calculated_patterns.dtype
-    noise_std = torch.rand((batchsize,1), device=device, dtype=dtype) * (noise_max - noise_min) + noise_min
+    noise_std = torch.rand((batchsize, 1), device=device, dtype=dtype) * (noise_max - noise_min) + noise_min
     noise = torch.randn(calculated_patterns.shape, device=device, dtype=dtype) * noise_std
     return noise
 
@@ -39,11 +42,11 @@ def get_background(batchsize, data, bg_prm_max=0.025, bg_prm_min=0.0, degree=8):
     """
     device = data.device
     dtype = data.dtype
-    n = torch.arange(degree,device=device,dtype=dtype).unsqueeze(1)
+    n = torch.arange(degree, device=device, dtype=dtype).unsqueeze(1)
     # Scale data into range -1 to +1
     ttstar = 2*(data - data.min())/(data.max() - data.min()) - 1
     chebyshev_basis = torch.cos(n*torch.arccos(ttstar))
-    params = (((torch.rand((batchsize,1,1), device=device, dtype=dtype)
+    params = (((torch.rand((batchsize, 1, 1), device=device, dtype=dtype)
                 * (bg_prm_max - bg_prm_min)) + bg_prm_min)
                 * torch.randn((batchsize, chebyshev_basis.shape[0], 1),
                 device=device, dtype=dtype))

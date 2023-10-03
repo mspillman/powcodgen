@@ -1,4 +1,6 @@
-#| code-fold: true
+import torch
+
+
 def gaussian(x, mu, sig):
     """Calculate a gaussian peak
 
