@@ -78,7 +78,7 @@ def calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=
     device = x.device
     dtype = x.dtype
     peakidx = torch.abs((x[0] + twotheta) - full_data).min(dim=-1).indices
-    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=dtype)
+    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=  dtype)
     full_pattern = full_pattern.scatter_(2,
                     peakidx.unsqueeze(2) + torch.arange(x.shape[0], device=device), peak_voigt*torch.isfinite(twotheta))
 
@@ -112,8 +112,102 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
                         degree=10)
     noise = backgroundnoise.get_noise(calculated_patterns)
 
+    # Final scaling to range 0-1
     calculated_patterns += bgs + noise
     calculated_patterns -= calculated_patterns.min(dim=1).values.unsqueeze(1)
     calculated_patterns /= calculated_patterns.max(dim=1).values.unsqueeze(1)
 
     return calculated_patterns
+
+def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems,
+                            hkl, intensities, unit_cells, wavelength=1.54056,
+                            ttmin=4, ttmax=44, same_hwhm=True,
+                            max_impurity_intensity = 0.15,
+                            min_impurity_intensity=0.01):
+    """
+    Expect the input tensors to have their first dimension to be of size batchsize
+    The first third of the batch will be used for the pure patterns
+    The second third of the batch will be used as the dominant phases
+    The final third of the batch will be used as minority (impurity) phases
+
+    The resultant combined data will then be shuffled to ensure that the network
+    doesn't learn this pattern!
+    """
+    batchsize = intensities.shape[0]
+    one_third = int(batchsize // 3)
+    device = x.device
+    dtype = x.dtype
+    indices = torch.arange(batchsize, dtype=torch.long, device=device)
+    pure = indices[:one_third]
+    dominant = indices[one_third:2*one_third]
+    minority = indices[2*one_third:]
+    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
+                    perturbation_stddev=0.05, zpemin=0.03, zpemax=0.03, wavelength=wavelength)
+
+    twotheta = twotheta.unsqueeze(2)
+
+    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities).unsqueeze(2)
+
+    hwhm_gaussian, hwhm_lorentzian, shl = get_peak_shape_params(twotheta)
+
+    # if peaks are set to have the same hwhm, need to modify the peak_shape_params
+    # to ensure that the impurity lines have the same hwhm. Regardless of this
+    # setting, the asymmetry (shl) parameter must be the same for a given pattern
+    # as this is of instrumental rather than sample based origin
+    if same_hwhm:
+        hwhm_gaussian[minority] = hwhm_gaussian[dominant]
+        hwhm_lorentzian[minority] = hwhm_lorentzian[dominant]
+    shl[minority] = shl[dominant]
+
+    peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian, hwhm_lorentzian, shl)
+
+    calculated_patterns = calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
+
+    # At this point, we want to scale down the minority phase intensities before
+    # we add the minority phase pattern to the dominant phase pattern
+    impure_intensities = torch.rand((one_third, 1),
+                            device=intensities.device, dtype=intensities.dtype)
+    impure_intensities *= (max_impurity_intensity - min_impurity_intensity)
+    impure_intensities += min_impurity_intensity
+
+    pure_data = calculated_patterns[pure]
+    minority_data = impure_intensities * calculated_patterns[minority]
+    dominant_data = calculated_patterns[dominant]
+    impure_data = dominant_data + minority_data
+    impure_data -= impure_data.min(dim=1).values.unsqueeze(1)
+    impure_data /= impure_data.max(dim=1).values.unsqueeze(1)
+    zero_impurity = torch.zeros_like(pure_data)
+
+    combined_patterns = torch.cat([pure_data, impure_data], dim=0)
+    pure_patterns = torch.cat([pure_data, dominant_data], dim=0)
+    impure_patterns = torch.cat([zero_impurity, minority_data], dim=0)
+
+    bgs = backgroundnoise.get_background(combined_patterns.shape[0],
+                        full_data[(full_data >= ttmin) & (full_data <= ttmax)],
+                        degree=10)
+    noise = backgroundnoise.get_noise(combined_patterns)
+
+    # Final scaling to range 0-1
+    combined_patterns += bgs + noise
+    combined_patterns -= combined_patterns.min(dim=1).values.unsqueeze(1)
+    combined_patterns /= combined_patterns.max(dim=1).values.unsqueeze(1)
+
+    shuffle = torch.randperm(combined_patterns.shape[0])
+    impure = torch.ones(one_third, device=device, dtype=dtype)
+    pure = torch.zeros_like(impure)
+    pure_impure = torch.cat([pure, impure], dim=0)
+
+    combined_patterns = combined_patterns[shuffle]
+    pure_patterns = pure_patterns[shuffle]
+    impure_patterns = impure_patterns[shuffle]
+    pure_impure = pure_impure[shuffle]
+
+    notnan = (torch.isnan(combined_patterns).sum(dim=-1) == 0)
+    combined_patterns = combined_patterns[notnan]
+    impure_patterns = impure_patterns[notnan]
+    pure_patterns = pure_patterns[notnan]
+    pure_impure = pure_impure[notnan]
+    if torch.isnan(combined_patterns).sum() > 1:
+        print("NaNs in training data generation - ",torch.isnan(combined_patterns).sum(dim=-1))
+
+    return combined_patterns, pure_patterns, impure_patterns, pure_impure
