@@ -135,7 +135,7 @@ def d_to_tt(d,wavelength=1.54056):
     return tt
 
 
-def get_zero_point_error(batchsize, device, dtype, zpemin=0.03, zpemax=0.03):
+def get_zero_point_error(batchsize, device, dtype, zpemin=-0.03, zpemax=0.03):
     """
     Generate a random zero-point error to be applied to the peak positions
 

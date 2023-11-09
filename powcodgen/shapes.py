@@ -126,7 +126,7 @@ def get_hwhm_G(tan_twotheta, cos_twotheta, U, V, W, Z):
 
     Args:
         tan_twotheta (tensor): tangent of the twotheta peak positions
-        cos_twotheta (tensor): tangent of the twotheta peak positions
+        cos_twotheta (tensor): cosine of the twotheta peak positions
         U (tensor): peakshape parameter U
         V (tensor): peakshape parameter V
         W (tensor): peakshape parameter W
@@ -146,7 +146,7 @@ def get_hwhm_L(tan_twotheta, cos_twotheta, X, Y):
 
     Args:
         tan_twotheta (tensor): tangent of the twotheta peak positions
-        cos_twotheta (tensor): tangent of the twotheta peak positions
+        cos_twotheta (tensor): cosine of the twotheta peak positions
         X (tensor): peakshape parameter X
         Y (tensor): peakshape parameter Y
 
@@ -159,7 +159,10 @@ def get_hwhm_L(tan_twotheta, cos_twotheta, X, Y):
     return ((X * tan_twotheta) + (Y/cos_twotheta)).unsqueeze(2)
 
 def get_shl(batchsize, device, dtype, shlmax=0.5, rescale=True):
-    """Generate asymmetry parameter for the FCJ profile.
+    """Generate asymmetry parameter for the FCJ profile. Adapted from GSAS-II,
+    See fcjde_gen and getFCJVoigt in original GSAS-II code here:
+    https://gsas-ii.readthedocs.io/en/latest/_modules/GSASIIpwd.html
+
 
     Args:
         shl = sum(S/L,H/L) where:

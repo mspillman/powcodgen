@@ -5,7 +5,7 @@ from . import shapes
 from . import backgroundnoise
 
 def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=0.03, zpemax=0.03, wavelength=1.54056):
+                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=1.54056):
     batchsize = intensities.shape[0]
     dtype = intensities.dtype
     device = intensities.device
