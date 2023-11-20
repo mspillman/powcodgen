@@ -1,8 +1,10 @@
 import torch
-from . import positions
-from . import intensity
-from . import shapes
-from . import backgroundnoise
+import time
+import warnings
+import positions
+import intensity
+import shapes
+import backgroundnoise
 
 def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
                     perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=1.54056):
@@ -17,7 +19,6 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
 
     # Get rid of any invalid unit cells after perturbation
     if valid.sum() != valid.shape[0]:
-        import warnings
         warnings.warn("Invalid cells generated")
         lattice_matrix = lattice_matrix[valid]
         hkl = hkl[valid]
@@ -29,7 +30,7 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     zpe = positions.get_zero_point_error(batchsize, device, dtype, zpemin=zpemin, zpemax=zpemax)
     twotheta = zpe + positions.d_to_tt(d_spacing, wavelength)
 
-    return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing
+    return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells
 
 def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities, PO_std=0.1):
     # Now apply PO perturbation to the peak intensities
@@ -73,29 +74,31 @@ def calculate_peaks(x, twotheta, intensities, hwhm_gaussian, hwhm_lorentzian, sh
 def calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=44.):
     # Finally calculate the full diffraction pattern
     twotheta[twotheta == 0] = torch.inf
-    twotheta[twotheta < 4] = torch.inf
-    twotheta[twotheta > 44] = torch.inf
+    twotheta[twotheta < ttmin] = torch.inf
+    twotheta[twotheta > ttmax] = torch.inf
     device = x.device
     dtype = x.dtype
     peakidx = torch.abs((x[0] + twotheta) - full_data).min(dim=-1).indices
-    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=  dtype)
+    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=dtype)
     full_pattern = full_pattern.scatter_(2,
-                    peakidx.unsqueeze(2) + torch.arange(x.shape[0], device=device), peak_voigt*torch.isfinite(twotheta))
+                    peakidx.unsqueeze(2) + torch.arange(x.shape[0], device=device),
+                    peak_voigt*torch.isfinite(twotheta))
 
     full_pattern = full_pattern.sum(dim=1)
+    full_pattern -= full_pattern.min(dim=1).values.unsqueeze(1)
     full_pattern /= full_pattern.max(dim=1).values.unsqueeze(1)
     full_pattern = full_pattern[:,(full_data >= ttmin) & (full_data <= ttmax)]
     return full_pattern
 
 def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
                                 intensities, unit_cells, wavelength=1.54056,
-                                ttmin=4, ttmax=44):
+                                ttmin=4., ttmax=44.):
     """
     Expect the input tensors to have their first dimension to be of size batchsize
     """
 
-    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=0.03, zpemax=0.03, wavelength=wavelength)
+    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
+                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
     twotheta = twotheta.unsqueeze(2)
 
@@ -113,17 +116,21 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
     noise = backgroundnoise.get_noise(calculated_patterns)
 
     # Final scaling to range 0-1
-    calculated_patterns += bgs + noise
-    calculated_patterns -= calculated_patterns.min(dim=1).values.unsqueeze(1)
-    calculated_patterns /= calculated_patterns.max(dim=1).values.unsqueeze(1)
+    calculated_patterns_bg_noise = calculated_patterns + bgs + noise
+    calculated_patterns_bg_noise -= calculated_patterns_bg_noise.min(dim=1).values.unsqueeze(1)
+    calculated_patterns_bg_noise /= calculated_patterns_bg_noise.max(dim=1).values.unsqueeze(1)
 
-    return calculated_patterns
+    notnan = (torch.isnan(calculated_patterns_bg_noise).sum(dim=-1) == 0)
+
+
+    return calculated_patterns_bg_noise[notnan], calculated_patterns[notnan]
 
 def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems,
                             hkl, intensities, unit_cells, wavelength=1.54056,
                             ttmin=4, ttmax=44, same_hwhm=True,
                             max_impurity_intensity = 0.15,
-                            min_impurity_intensity=0.01):
+                            min_impurity_intensity=0.01, add_background=True,
+                            shuffle_seed=None, add_noise=True):
     """
     Expect the input tensors to have their first dimension to be of size batchsize
     The first third of the batch will be used for the pure patterns
@@ -131,7 +138,8 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     The final third of the batch will be used as minority (impurity) phases
 
     The resultant combined data will then be shuffled to ensure that the network
-    doesn't learn this pattern!
+    doesn't learn this pattern. For consistent shuffling, you can supply the
+    "shuffle_seed" parameter.
     """
     batchsize = intensities.shape[0]
     one_third = int(batchsize // 3)
@@ -141,8 +149,8 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure = indices[:one_third]
     dominant = indices[one_third:2*one_third]
     minority = indices[2*one_third:]
-    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=0.03, zpemax=0.03, wavelength=wavelength)
+    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
+                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
     twotheta = twotheta.unsqueeze(2)
 
@@ -189,11 +197,18 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     noise = backgroundnoise.get_noise(combined_patterns)
 
     # Final scaling to range 0-1
-    combined_patterns += bgs + noise
+    if add_background:
+        combined_patterns += bgs
+    if add_noise:
+        combined_patterns += noise
     combined_patterns -= combined_patterns.min(dim=1).values.unsqueeze(1)
     combined_patterns /= combined_patterns.max(dim=1).values.unsqueeze(1)
 
+    if shuffle_seed is not None:
+        torch.manual_seed(shuffle_seed)
     shuffle = torch.randperm(combined_patterns.shape[0])
+    if shuffle_seed is not None:
+        torch.manual_seed(int(time.time()*10000000))
     impure = torch.ones(one_third, device=device, dtype=dtype)
     pure = torch.zeros_like(impure)
     pure_impure = torch.cat([pure, impure], dim=0)
@@ -203,6 +218,7 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure_patterns = pure_patterns[shuffle]
     impure_patterns = impure_patterns[shuffle]
     pure_impure = pure_impure[shuffle]
+    cs = new_unit_cells[:2*one_third][shuffle]
 
     notnan = (torch.isnan(combined_patterns).sum(dim=-1) == 0)
     combined_patterns = combined_patterns[notnan]
@@ -210,6 +226,7 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     impure_patterns = impure_patterns[notnan]
     pure_patterns = pure_patterns[notnan]
     pure_impure = pure_impure[notnan]
+    cs = cs[notnan]
     if torch.isnan(combined_patterns).sum() > 1:
         print("NaNs in training data generation - ",torch.isnan(combined_patterns).sum(dim=-1))
 
@@ -222,4 +239,13 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
         combined_patterns *= pos_mask
         combined_patterns += neg_mask * torch.gather(combined_patterns,1,first_nonzero.unsqueeze(1))
 
-    return combined_patterns, pure_patterns, impure_patterns, pure_impure
+    return combined_patterns, pure_patterns, impure_patterns, pure_impure, cs
+
+def get_initial_tensors(ttmin=4., ttmax=44., peakrange=3, datadim=2048,
+                        device=torch.device("cpu"), dtype=torch.float32):
+    full_data = torch.linspace(ttmin-(peakrange/2), ttmax+(peakrange/2),
+                        int(torch.ceil(torch.tensor((ttmax-ttmin+peakrange)/((ttmax-ttmin)/datadim)))),
+                        device=device, dtype=dtype)
+    plotdata = full_data[(full_data >= ttmin) & (full_data <= ttmax)].cpu()
+    x = (full_data[full_data <= ttmin+(peakrange/2)]).clone() - ttmin
+    return full_data, x, plotdata

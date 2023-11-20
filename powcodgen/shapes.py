@@ -22,7 +22,7 @@ def gaussian(x, mu, sig):
 
 
 def lorentzian(x, loc, gam):
-    """Calcualte a lorentzian peak
+    """Calculate a lorentzian peak
 
     Args:
         x (tensor): the x-coordinates for the peak. Shape = (datapoints)
@@ -76,8 +76,10 @@ def fcj(data,twotheta,shl):
     # Sometimes the FCJ profile returned is all zeros. We don't want to separate
     # these out with loops etc, so need to deal with them. We'll replace zero entry
     # with an array like this ([1, 0, 0, ..., 0]) which gives ([1, 1, 1, ..., 1])
-    # after the Fourier transform. Then then means that the pointwise multiplication
-    # of the FT Gaussian and Lorentzian components can still occur unaffected
+    # after the Fourier transform. This then means that the pointwise multiplication
+    # of the FT'd Gaussian and Lorentzian components can still occur unaffected
+    # This then allows the full Voigt profiles to be calculated in the absence of
+    # any asymmetry.
     zero_sum = (fcj_profile.sum(dim=-1) == 0).type(fcj_profile.dtype)
     fcj_profile[:,:,0] += zero_sum
     #first_zero = torch.zeros_like(x)
@@ -176,5 +178,6 @@ def get_shl(batchsize, device, dtype, shlmax=0.5, rescale=True):
         tensor: The asymmetry parameter for the FCJ profiles
     """
     shl = torch.rand((batchsize, 1, 1), device=device, dtype=dtype) * shlmax
-    shl /= 57.2958
+    if rescale:
+        shl /= 57.2958
     return shl
