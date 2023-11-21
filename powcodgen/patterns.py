@@ -36,8 +36,8 @@ def get_initial_tensors(ttmin=4., ttmax=44., peakrange=3, datadim=2048,
                 matplotlib
     """
     full_data = torch.linspace(ttmin-(peakrange/2), ttmax+(peakrange/2),
-                        int(torch.ceil(torch.tensor((ttmax-ttmin+peakrange)/((ttmax-ttmin)/datadim)))),
-                        device=device, dtype=dtype)
+        int(torch.ceil(torch.tensor((ttmax-ttmin+peakrange)/((ttmax-ttmin)/datadim)))),
+        device=device, dtype=dtype)
     plotdata = full_data[(full_data >= ttmin) & (full_data <= ttmax)].cpu()
     x = (full_data[full_data <= ttmin+(peakrange/2)]).clone() - ttmin
     return full_data, x, plotdata
@@ -51,15 +51,19 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     intensities so that the intensities for invalid cells can be ignored.
 
     Args:
-        crystal_systems (tensor): The cyrstal systems for the unit cells. These
-            are numbers from 0 - 7, which encode the crystal system in alphabetical
-            order, i.e. cubic = 0, trigonal_rhombohedral = 7. Shape = (batch, 1)
-        hkl (tensor): Miller indices for the reflections. Shape = (batch, n_peaks, 3)
-        intensities (tensor): The intensities for the reflections. Shape = (batch, n_peaks)
+        crystal_systems (tensor): The crystal systems for the unit cells. These
+            are numbers from 0 - 7, which encode the crystal system in
+            alphabetical order, i.e. cubic = 0, trigonal_rhombohedral = 7.
+            Shape = (batch, 1)
+        hkl (tensor): Miller indices for the reflections.
+            Shape = (batch, n_peaks, 3)
+        intensities (tensor): The intensities for the reflections.
+            Shape = (batch, n_peaks)
         unit_cells (tensor): The unit cells for the crystals, expressed as
-            lengths and angles in degrees, i.e. [a, b, c, al, be, ga]. Shape = (batch, 6)
-        perturbation_stddev (float, optional): The standard deviation to use for the
-            unit cell perturbations. Defaults to 0.05.
+            lengths and angles in degrees, i.e. [a, b, c, al, be, ga].
+            Shape = (batch, 6)
+        perturbation_stddev (float, optional): The standard deviation to use for
+            the unit cell perturbations. Defaults to 0.05.
         zpemin (float, optional): The minimum value for the zero-point error.
             Defaults to -0.03.
         zpemax (float, optional): The maximum value for the zero-point error.
@@ -68,10 +72,11 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
             Defaults to 1.54056 (Cu Ka1)
 
     Returns:
-        Tuple: A tuple of tensors containing the two theta positions (batch, npeaks, 1),
-            the reciprocal lattice metric tensors for the perturbed unit cells (batch, 3, 3),
-            the Miller indices for the reflections (batch, n_peaks, 3), the d-spacings for
-            the reflections (batch, n_peaks, 1), the perturbed unit cells (batch, 6)
+        Tuple: A tuple of tensors containing the two theta positions
+            (batch, npeaks, 1), the reciprocal lattice metric tensors for the
+            perturbed unit cells (batch, 3, 3), the Miller indices for the
+            reflections (batch, n_peaks, 3), the d-spacings for the reflections
+            (batch, n_peaks, 1), the perturbed unit cells (batch, 6)
     """
     batchsize = intensities.shape[0]
     dtype = intensities.dtype
@@ -91,14 +96,17 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
         intensities = intensities[valid]
         batchsize = intensities.shape[0]
     reciprocal_lattice_matrix = torch.linalg.inv(lattice_matrix)
-    reciprocal_lattice_metric_tensor = positions.get_recip_lattice_metric_tensor(reciprocal_lattice_matrix)
+    reciprocal_lattice_metric_tensor = positions.get_recip_lattice_metric_tensor(
+                                                    reciprocal_lattice_matrix)
     d_spacing = positions.get_d_spacing(reciprocal_lattice_metric_tensor, hkl)
-    zpe = positions.get_zero_point_error(batchsize, device, dtype, zpemin=zpemin, zpemax=zpemax)
+    zpe = positions.get_zero_point_error(batchsize, device, dtype, zpemin=zpemin,
+                                        zpemax=zpemax)
     twotheta = zpe + positions.d_to_tt(d_spacing, wavelength)
     twotheta = twotheta.unsqueeze(2)
     return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells
 
-def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities, PO_std=0.1):
+def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities,
+                        PO_std=0.1):
     """Modify a set of input intensities with the March Dollase preferred orientation
     correction. This function will generate the MD parameters so the user does not
     need to do this manually. If manual control of the MD parameters is desired,
@@ -118,8 +126,10 @@ def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensit
         tensor: the PO-modified intensities. Shape = (batch, n_peaks, 1)
     """
     cosP, sinP, MDfactor, PO_axis = intensity.get_MD_PO_components(hkl,
-                                    reciprocal_lattice_metric_tensor, dspacing, factor_std=PO_std)
-    intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP, MDfactor)
+                                    reciprocal_lattice_metric_tensor, dspacing,
+                                    factor_std=PO_std)
+    intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP,
+                                                    MDfactor)
     return torch.nan_to_num(intensities).unsqueeze(2)
 
 def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
@@ -131,32 +141,35 @@ def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
     Jephcoat axial divergence profile function.
 
     Args:
-        twotheta (tensor): The two-theta positons for the peaks. Shape = (batch, n_peaks, 1)
+        twotheta (tensor): The two-theta positons for the peaks.
+            Shape = (batch, n_peaks, 1)
         U, V, W, X, Y, Z are the peak shape parameters described in this article:
             https://journals.iucr.org/j/issues/2021/06/00/gj5272/
-            Briefly, U, V, W and Z contribute to the gaussian HWHM, whilst X and Y contribute
-            to the lortentzian HWHM. U and X related to microstrain and Z and Y are related to
-            domain size.
-            The default parameters chosen help to generate peaks with FWHMs close to that
-            seen with laboratory diffraction data.
-        shlmax (float, optional): The asymmetry parameter for the FCJ axial divergence
-            model. This follows the naming and implementation used by GSAS-II. For more
-            detail, see here: https://gsas-ii.readthedocs.io/en/latest/_modules/GSASIIpwd.html#fcjde_gen
+            Briefly, U, V, W and Z contribute to the gaussian HWHM, whilst X and
+            Y contribute to the lortentzian HWHM. U and X related to microstrain
+            and Z and Y are related to domain size. The default parameters
+            chosen help to generate peaks with FWHMs close to those seen with
+            laboratory diffraction data.
+        shlmax (float, optional): The asymmetry parameter for the FCJ axial
+            divergence model. This follows the naming and implementation used by
+            GSAS-II. For more detail, see here:
+            https://gsas-ii.readthedocs.io/en/latest/_modules/GSASIIpwd.html#fcjde_gen
             Defaults to 0.5.
 
     Returns:
-        tuple: tuple of tensors containing the HWHM for the gaussian and lorentzian components,
-            as well as the asymnmetry parameters for each of the peaks. The HWHM tensors each have
-            shape (batch, n_peaks, 1). The SHL tensor has shape (batch, 1, 1)
+        tuple: tuple of tensors containing the HWHM for the gaussian and
+            lorentzian components, as well as the asymnmetry parameters for each
+            of the peaks. The HWHM tensors each have shape (batch, n_peaks, 1).
+            The SHL tensor has shape (batch, 1, 1).
     """
     batchsize = twotheta.shape[0]
     dtype = twotheta.dtype
     device = twotheta.device
     tan_twotheta = torch.tan(twotheta*torch.pi/180.)
     cos_twotheta = torch.cos(twotheta*torch.pi/180.)
-    U, V, W, Z = shapes.get_UVWZ(batchsize, device, dtype, U_min=U_min, U_max=U_max,
-                        V_min=V_min, V_max=V_max, W_min=W_min, W_max=W_max,
-                        Z_min=Z_min, Z_max=Z_max)
+    U, V, W, Z = shapes.get_UVWZ(batchsize, device, dtype, U_min=U_min,
+                        U_max=U_max, V_min=V_min, V_max=V_max, W_min=W_min,
+                        W_max=W_max, Z_min=Z_min, Z_max=Z_max)
     X, Y = shapes.get_XY(batchsize, device, dtype, X_min=X_min, X_max=X_max,
                         Y_min=Y_min,Y_max=Y_max)
     hwhm_gaussian = shapes.get_hwhm_G(tan_twotheta, cos_twotheta, U, V, W, Z)
@@ -176,11 +189,16 @@ def calculate_peaks(x, twotheta, intensities, hwhm_gaussian, hwhm_lorentzian, sh
             produced in the get_initial_tensors function, and will by default be
             centred at zero, with +/- 1.5 degrees twotheta either side.
             Shape = (n_points_for_peak)
-        twotheta (tensor): The positions of the reflections. Shape = (batch, n_peaks, 1)
-        intensities (tensor): The intensities of the reflections. Shape = (batch, n_peaks, 1)
-        hwhm_gaussian (tensor): The HWHMs for the gaussian components. Shape = (batch, n_peaks, 1)
-        hwhm_lorentzian (tensor): The HWHMs for the lorentzian components. Shape = (batch, n_peaks, 1)
-        shl (tensor): The asymmetry parameter for the patterns. Shape = (batch, 1, 1)
+        twotheta (tensor): The positions of the reflections.
+            Shape = (batch, n_peaks, 1)
+        intensities (tensor): The intensities of the reflections.
+            Shape = (batch, n_peaks, 1)
+        hwhm_gaussian (tensor): The HWHMs for the gaussian components.
+            Shape = (batch, n_peaks, 1)
+        hwhm_lorentzian (tensor): The HWHMs for the lorentzian components.
+            Shape = (batch, n_peaks, 1)
+        shl (tensor): The asymmetry parameter for the patterns.
+            Shape = (batch, 1, 1)
 
     Returns:
         tensor: the Voigt peaks. Shape = (batch, n_peaks, n_points_for_peak)
@@ -201,20 +219,22 @@ def combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4.
     """Combine several Voigt peaks into a full diffraction pattern.
 
     Args:
-        x (tensor): x (tensor): the data around which the peak will be generated. This is
-            produced in the get_initial_tensors function, and will by default be
-            centred at zero, with +/- 1.5 degrees twotheta either side.
+        x (tensor): x (tensor): the data around which the peak will be generated.
+            This is produced in the get_initial_tensors function, and will by
+            default be centred at zero, with +/- 1.5 degrees twotheta either side.
             Shape = (n_points_for_peak)
-        full_data (tensor): The full datarange, + an extra bit either side, to allow for
-            peaks that are generated close to the limit of the data range to impact
-            the intensity within the data range.
+        full_data (tensor): The full datarange, + an extra bit either side, to
+            allow for peaks that are generated close to the limit of the data
+            range to impact the intensity within the data range.
             Shape = (datadim + n_points_for_peak)
         twotheta (tensor): The twotheta positions of the peaks.
             Shape = (batch, n_peaks, 1)
         peak_voigt (tensor): The Voigt profiles for each of the peaks.
             Shape = (batch, n_peaks, n_points_for_peak)
-        ttmin (float, optional): Minimum twotheta angle for the data. Defaults to 4.
-        ttmax (float, optional): Maximum twotheta angle for the data. Defaults to 44.
+        ttmin (float, optional): Minimum twotheta angle for the data.
+            Defaults to 4.
+        ttmax (float, optional): Maximum twotheta angle for the data.
+            Defaults to 44.
 
     Returns:
         tensor: The full diffraction patterns, normalised such that the minimum
@@ -231,7 +251,8 @@ def combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4.
     peakidx = torch.abs((x[0] + twotheta) - full_data).min(dim=-1).indices
     # Initialize the full patterns with zero intensity, then add the Voigt profiles.
     # It will initially have shape (batch, n_peaks, datadim + n_points_for_peak).
-    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=dtype)
+    full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]],
+                            device=device, dtype=dtype)
     # The scatter_ function takes the individual profiles from the peak_voigt tensor
     # and writes them into the appropriate place in the full_pattern tensor. The
     # result is then summed down the n_peaks axis (1) to give the full diffraction
@@ -253,16 +274,20 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
     Expect the input tensors to have their first dimension to be of size batchsize
     """
 
-    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
+    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(
+        crystal_systems, hkl, intensities, unit_cells, perturbation_stddev=0.05,
+        zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
-    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities)
+    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor,
+                                        d_spacing, intensities)
 
     hwhm_gaussian, hwhm_lorentzian, shl = get_peak_shape_params(twotheta)
 
-    peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian, hwhm_lorentzian, shl)
+    peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian,
+                                hwhm_lorentzian, shl)
 
-    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
+    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta,
+                                            peak_voigt, ttmin=ttmin, ttmax=ttmax)
 
     bgs = backgroundnoise.get_background(calculated_patterns.shape[0],
                         full_data[(full_data >= ttmin) & (full_data <= ttmax)],
@@ -280,11 +305,9 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
     return calculated_patterns_bg_noise[notnan], calculated_patterns[notnan]
 
 def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems,
-                            hkl, intensities, unit_cells, wavelength=1.54056,
-                            ttmin=4, ttmax=44, same_hwhm=True,
-                            max_impurity_intensity=0.15,
-                            min_impurity_intensity=0.01, add_background=True,
-                            shuffle_seed=None, add_noise=True):
+    hkl, intensities, unit_cells, wavelength=1.54056, ttmin=4, ttmax=44,
+    same_hwhm=True, max_impurity_intensity=0.15, min_impurity_intensity=0.01,
+    add_background=True, shuffle_seed=None, add_noise=True):
     """
     Expect the input tensors to have their first dimension to be of size batchsize
     The first third of the batch will be used for the pure patterns
@@ -303,10 +326,12 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure = indices[:one_third]
     dominant = indices[one_third:2*one_third]
     minority = indices[2*one_third:]
-    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
+    twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(
+        crystal_systems, hkl, intensities, unit_cells, perturbation_stddev=0.05,
+        zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
-    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities).unsqueeze(2)
+    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor,
+                                        d_spacing, intensities).unsqueeze(2)
 
     hwhm_gaussian, hwhm_lorentzian, shl = get_peak_shape_params(twotheta)
 
@@ -319,9 +344,11 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
         hwhm_lorentzian[minority] = hwhm_lorentzian[dominant]
     shl[minority] = shl[dominant]
 
-    peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian, hwhm_lorentzian, shl)
+    peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian,
+                                hwhm_lorentzian, shl)
 
-    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
+    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta,
+                                        peak_voigt, ttmin=ttmin, ttmax=ttmax)
 
     # At this point, we want to scale down the minority phase intensities before
     # we add the minority phase pattern to the dominant phase pattern
@@ -381,13 +408,15 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure_impure = pure_impure[notnan]
     cs = cs[notnan]
     if torch.isnan(combined_patterns).sum() > 1:
-        print("NaNs in training data generation - ",torch.isnan(combined_patterns).sum(dim=-1))
+        print("NaNs in training data generation - ",
+                torch.isnan(combined_patterns).sum(dim=-1))
 
     # Zero out the start of the pattern, and set those elements equal to the value
     # of the first non-zero element, as an additional source of augmentation.
     # This will only happen in half of the batches.
     if torch.randint(0,2,(1,)).sum() > 0:
-        neg_mask = (torch.arange(combined_patterns.shape[1], device=device).unsqueeze(1) < first_nonzero.squeeze()).type(dtype).T
+        neg_mask = (torch.arange(combined_patterns.shape[1],
+                    device=device).unsqueeze(1) < first_nonzero.squeeze()).type(dtype).T
         pos_mask = 1-neg_mask
         combined_patterns *= pos_mask
         combined_patterns += neg_mask * torch.gather(combined_patterns,1,first_nonzero.unsqueeze(1))
