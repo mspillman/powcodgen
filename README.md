@@ -1,3 +1,4 @@
+![python build and test](https://github.com/mspillman/powcodgen/actions/workflows/python-app.yml/badge.svg)
 # powcodgen
 The code in this repo aims to generate semi-realistic diffraction patterns from the [PowCod database](https://www.ba.ic.cnr.it/softwareic/qualx/powcod-download/) for machine learning applications.
 
