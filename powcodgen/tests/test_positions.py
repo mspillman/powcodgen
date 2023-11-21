@@ -1,6 +1,8 @@
 import unittest
 import torch
-from positions import *
+from positions import get_lattice_matrix, get_recip_lattice_metric_tensor
+from positions import get_unit_cell_perturbation, get_d_spacing
+from positions import get_zero_point_error, d_to_tt
 
 
 class TestPositionsFunctions(unittest.TestCase):

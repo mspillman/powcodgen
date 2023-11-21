@@ -1,10 +1,10 @@
 import torch
 import time
 import warnings
-import positions
-import intensity
-import shapes
-import backgroundnoise
+from powcodgen import positions
+from powcodgen import intensity
+from powcodgen import shapes
+from powcodgen import backgroundnoise
 
 def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
                     perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=1.54056):
@@ -29,7 +29,7 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     d_spacing = positions.get_d_spacing(reciprocal_lattice_metric_tensor, hkl)
     zpe = positions.get_zero_point_error(batchsize, device, dtype, zpemin=zpemin, zpemax=zpemax)
     twotheta = zpe + positions.d_to_tt(d_spacing, wavelength)
-
+    twotheta = twotheta.unsqueeze(2)
     return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells
 
 def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities, PO_std=0.1):
@@ -37,7 +37,7 @@ def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensit
     cosP, sinP, MDfactor, PO_axis = intensity.get_MD_PO_components(hkl,
                                     reciprocal_lattice_metric_tensor, dspacing, factor_std=PO_std)
     intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP, MDfactor)
-    return torch.nan_to_num(intensities)
+    return torch.nan_to_num(intensities).unsqueeze(2)
 
 def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
                         V_min=0.0001, V_max=0.0005, W_min=0.0001, W_max=0.0005,
@@ -71,7 +71,7 @@ def calculate_peaks(x, twotheta, intensities, hwhm_gaussian, hwhm_lorentzian, sh
     peak_voigt *= intensities
     return peak_voigt
 
-def calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=44.):
+def combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=44.):
     # Finally calculate the full diffraction pattern
     twotheta[twotheta == 0] = torch.inf
     twotheta[twotheta < ttmin] = torch.inf
@@ -83,7 +83,6 @@ def calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=
     full_pattern = full_pattern.scatter_(2,
                     peakidx.unsqueeze(2) + torch.arange(x.shape[0], device=device),
                     peak_voigt*torch.isfinite(twotheta))
-
     full_pattern = full_pattern.sum(dim=1)
     full_pattern -= full_pattern.min(dim=1).values.unsqueeze(1)
     full_pattern /= full_pattern.max(dim=1).values.unsqueeze(1)
@@ -100,15 +99,13 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
     twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
                     perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
-    twotheta = twotheta.unsqueeze(2)
-
-    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities).unsqueeze(2)
+    mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities)
 
     hwhm_gaussian, hwhm_lorentzian, shl = get_peak_shape_params(twotheta)
 
     peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian, hwhm_lorentzian, shl)
 
-    calculated_patterns = calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
+    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
 
     bgs = backgroundnoise.get_background(calculated_patterns.shape[0],
                         full_data[(full_data >= ttmin) & (full_data <= ttmax)],
@@ -152,8 +149,6 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells = get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
                     perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=wavelength)
 
-    twotheta = twotheta.unsqueeze(2)
-
     mod_intensities = get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, d_spacing, intensities).unsqueeze(2)
 
     hwhm_gaussian, hwhm_lorentzian, shl = get_peak_shape_params(twotheta)
@@ -169,7 +164,7 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
 
     peak_voigt = calculate_peaks(x, twotheta, mod_intensities, hwhm_gaussian, hwhm_lorentzian, shl)
 
-    calculated_patterns = calculate_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
+    calculated_patterns = combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=ttmin, ttmax=ttmax)
 
     # At this point, we want to scale down the minority phase intensities before
     # we add the minority phase pattern to the dominant phase pattern
