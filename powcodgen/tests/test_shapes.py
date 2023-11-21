@@ -21,7 +21,7 @@ class TestShapesFunctions(unittest.TestCase):
         sig = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = gaussian(x, mu, sig)
         max_index = torch.argmax(peak, dim=-1)
-        self.assertTrue(torch.allclose(x[max_index].squeeze(), mu.squeeze()))
+        self.assertEqual(x[max_index].item(), mu.item())
 
     def test_lorentzian_valid_input(self):
         """Test the lorentzian function with valid input."""
@@ -39,7 +39,7 @@ class TestShapesFunctions(unittest.TestCase):
         gam = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = lorentzian(x, loc, gam)
         max_index = torch.argmax(peak, dim=-1)
-        self.assertTrue(torch.allclose(x[max_index].squeeze(), loc.squeeze()))
+        self.assertEqual(x[max_index].item(), loc.item())
 
     def test_fcj_valid_input(self):
         """Test the FCJ function with valid input."""
