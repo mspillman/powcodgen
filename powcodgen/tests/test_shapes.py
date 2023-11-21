@@ -7,53 +7,53 @@ class TestShapesFunctions(unittest.TestCase):
 
     def test_gaussian_valid_input(self):
         """Test the gaussian function with valid input."""
-        x = torch.linspace(-1, 1, steps=101)
-        mu = torch.tensor([[[0.], [5.]]])
-        sig = torch.tensor([[[1.], [2.]]])
+        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        mu = torch.tensor([[[0.], [5.]]], dtype=torch.float32)
+        sig = torch.tensor([[[1.], [2.]]], dtype=torch.float32)
         peak = gaussian(x, mu, sig)
         self.assertEqual(peak.shape, (1, 2, 101))
         self.assertIsInstance(peak, torch.Tensor)
 
     def test_gaussian_peak_properties(self):
         """Test the properties of the gaussian peak."""
-        x = torch.linspace(-1, 1, steps=101)
-        mu = torch.tensor([[0.]])
-        sig = torch.tensor([[[1.]]])
+        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        mu = torch.tensor([[0.]], dtype=torch.float32)
+        sig = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = gaussian(x, mu, sig)
         max_index = torch.argmax(peak, dim=-1)
         self.assertTrue(torch.allclose(x[max_index], mu))
 
     def test_lorentzian_valid_input(self):
         """Test the lorentzian function with valid input."""
-        x = torch.linspace(-1, 1, steps=101)
-        loc = torch.tensor([[[0.], [5.]]])
-        gam = torch.tensor([[[1.], [2.]]])
+        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        loc = torch.tensor([[[0.], [5.]]], dtype=torch.float32)
+        gam = torch.tensor([[[1.], [2.]]], dtype=torch.float32)
         peak = lorentzian(x, loc, gam)
         self.assertEqual(peak.shape, (1, 2, 101))
         self.assertIsInstance(peak, torch.Tensor)
 
     def test_lorentzian_peak_properties(self):
         """Test the properties of the lorentzian peak."""
-        x = torch.linspace(-1, 1, steps=101)
-        loc = torch.tensor([[0.]])
-        gam = torch.tensor([[[1.]]])
+        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        loc = torch.tensor([[0.]], dtype=torch.float32)
+        gam = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = lorentzian(x, loc, gam)
         max_index = torch.argmax(peak, dim=-1)
         self.assertTrue(torch.allclose(x[max_index], loc))
 
     def test_fcj_valid_input(self):
         """Test the FCJ function with valid input."""
-        data = torch.linspace(1, 11, steps=101)
-        twotheta = torch.tensor([[[2.], [3.]]])
-        shl = torch.tensor([[0.1]])
+        data = torch.linspace(1, 11, steps=101, dtype=torch.float32)
+        twotheta = torch.tensor([[[2.], [3.]]], dtype=torch.float32)
+        shl = torch.tensor([[0.1]], dtype=torch.float32)
         peak = fcj(data, twotheta, shl)
         self.assertEqual(peak.shape, (1, 2, 101))
 
     def test_fcj_zero_asymmetry(self):
         """Test the FCJ function with no asymmetry."""
-        data = torch.linspace(1, 11, steps=101)
-        twotheta = torch.tensor([[[2.], [3.]]])
-        shl = torch.tensor([[0.]])
+        data = torch.linspace(1, 11, steps=101, dtype=torch.float32)
+        twotheta = torch.tensor([[[2.], [3.]]], dtype=torch.float32)
+        shl = torch.tensor([[0.]], dtype=torch.float32)
         peak = fcj(data, twotheta, shl)
         self.assertEqual(peak.sum(), 2.)
         self.assertEqual(peak[:,:,0].sum(), 2.)
