@@ -1,5 +1,7 @@
 # powcodgen
-The code in this repo aims to generate semi-realistic diffraction patterns from the PowCod database for machine learning applications.
+The code in this repo aims to generate semi-realistic diffraction patterns from the [PowCod database](https://www.ba.ic.cnr.it/softwareic/qualx/powcod-download/) for machine learning applications.
+
+Once you have obtained a copy of the database, you can filter it as desired, using the [notebook](https://nbviewer.org/github/mspillman/powcodgen/blob/main/Filter-PowCod.ipynb) in this repo.
 
 Several method of data augmentation have been implemented:
 - variable unit cells to simulate temperature changes (whilst maintaining crystal-system)
@@ -11,4 +13,4 @@ Several method of data augmentation have been implemented:
 
 [See this post for more information](https://mspillman.github.io/blog/posts/2023-09-08-Generating-synthetic-PXRD-data.html#introduction)
 
-Documentation etc to come in the future
+More detailed instructions for use coming soon.
