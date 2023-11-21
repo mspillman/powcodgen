@@ -7,7 +7,7 @@ class TestShapesFunctions(unittest.TestCase):
 
     def test_gaussian_valid_input(self):
         """Test the gaussian function with valid input."""
-        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        x = torch.linspace(-10, 10, steps=101, dtype=torch.float32)
         mu = torch.tensor([[[0.], [5.]]], dtype=torch.float32)
         sig = torch.tensor([[[1.], [2.]]], dtype=torch.float32)
         peak = gaussian(x, mu, sig)
@@ -17,15 +17,15 @@ class TestShapesFunctions(unittest.TestCase):
     def test_gaussian_peak_properties(self):
         """Test the properties of the gaussian peak."""
         x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
-        mu = torch.tensor([[0.]], dtype=torch.float32)
+        mu = torch.tensor([[[0.]]], dtype=torch.float32)
         sig = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = gaussian(x, mu, sig)
         max_index = torch.argmax(peak, dim=-1)
-        self.assertTrue(torch.allclose(x[max_index], mu))
+        self.assertTrue(torch.allclose(x[max_index].squeeze(), mu.squeeze()))
 
     def test_lorentzian_valid_input(self):
         """Test the lorentzian function with valid input."""
-        x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
+        x = torch.linspace(-10, 10, steps=101, dtype=torch.float32)
         loc = torch.tensor([[[0.], [5.]]], dtype=torch.float32)
         gam = torch.tensor([[[1.], [2.]]], dtype=torch.float32)
         peak = lorentzian(x, loc, gam)
@@ -35,11 +35,11 @@ class TestShapesFunctions(unittest.TestCase):
     def test_lorentzian_peak_properties(self):
         """Test the properties of the lorentzian peak."""
         x = torch.linspace(-1, 1, steps=101, dtype=torch.float32)
-        loc = torch.tensor([[0.]], dtype=torch.float32)
+        loc = torch.tensor([[[0.]]], dtype=torch.float32)
         gam = torch.tensor([[[1.]]], dtype=torch.float32)
         peak = lorentzian(x, loc, gam)
         max_index = torch.argmax(peak, dim=-1)
-        self.assertTrue(torch.allclose(x[max_index], loc))
+        self.assertTrue(torch.allclose(x[max_index].squeeze(), loc.squeeze()))
 
     def test_fcj_valid_input(self):
         """Test the FCJ function with valid input."""
