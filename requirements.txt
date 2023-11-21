@@ -1,2 +1,2 @@
-torch>=2.0
-numpy
+torch==2.0.0
+numpy==1.24.3
