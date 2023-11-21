@@ -1,8 +1,8 @@
 import unittest
 import torch
-import positions
-from patterns import get_peak_positions, get_initial_tensors, get_PO_intensities
-from patterns import get_peak_shape_params, calculate_peaks, combine_peaks_for_full_patterns
+from .. import positions
+from ..patterns import get_peak_positions, get_initial_tensors, get_PO_intensities
+from ..patterns import get_peak_shape_params, calculate_peaks, combine_peaks_for_full_patterns
 
 
 class TestPatternsFunctions(unittest.TestCase):

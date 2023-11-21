@@ -1,6 +1,6 @@
 import torch
 import unittest
-from backgroundnoise import get_noise, get_background
+from ..backgroundnoise import get_noise, get_background
 
 class TestBackgroundNoiseFunctions(unittest.TestCase):
 

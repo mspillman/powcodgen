@@ -1,7 +1,7 @@
 import unittest
 import torch
-from intensity import get_MD_PO_components, apply_MD_PO_correction
-from positions import get_lattice_matrix, get_recip_lattice_metric_tensor, get_d_spacing
+from ..intensity import get_MD_PO_components, apply_MD_PO_correction
+from ..positions import get_lattice_matrix, get_recip_lattice_metric_tensor, get_d_spacing
 
 class TestIntensityFunctions(unittest.TestCase):
     

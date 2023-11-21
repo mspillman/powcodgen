@@ -1,6 +1,6 @@
 import unittest
 import torch
-from shapes import gaussian, lorentzian, fcj, get_UVWZ, get_XY, get_hwhm_G, get_hwhm_L, get_shl
+from ..shapes import gaussian, lorentzian, fcj, get_UVWZ, get_XY, get_hwhm_G, get_hwhm_L, get_shl
 
 
 class TestShapesFunctions(unittest.TestCase):
