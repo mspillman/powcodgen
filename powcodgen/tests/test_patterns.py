@@ -6,6 +6,7 @@ from patterns import get_peak_shape_params, calculate_peaks, combine_peaks_for_f
 
 
 class TestPatternsFunctions(unittest.TestCase):
+
     def setUp(self):
         self.ttmin = 4
         self.ttmax = 44

@@ -6,8 +6,73 @@ from powcodgen import intensity
 from powcodgen import shapes
 from powcodgen import backgroundnoise
 
+
+def get_initial_tensors(ttmin=4., ttmax=44., peakrange=3, datadim=2048,
+                        device=torch.device("cpu"), dtype=torch.float32):
+    """Generates the baseline tensors for calculating the diffraction patterns
+
+    Args:
+        ttmin (float, optional): Minimum angle for the PXRD data. Defaults to 4.
+        ttmax (float, optional): Maximum angle for the PXRD data. Defaults to 44.
+        peakrange (int, optional): The distance (in degrees) around the centre
+                                    of each peak to generate the peak within.
+                                    i.e. if the peak is positioned at 15 degrees
+                                    there is little point calculating the
+                                    contribution to the intensity at 2 degrees.
+                                    Instead, calculate the intensity contribution
+                                    +/- peakrange around the centre of the peak.
+                                    Defaults to 3.
+        datadim (int, optional): The dimensionality of data, i.e. the number of
+                                points in the PXRD histograms. Defaults to 2048.
+        device (torch.device, optional): The device to run the calculations on.
+                                        Defaults to torch.device("cpu").
+        dtype (torch.dtype, optional): The datatype for the tensors.
+                                        Defaults to torch.float32.
+
+    Returns:
+        Tuple: pytorch tensors for the full data range with an extra
+                +/- 0.5*peakrange at either end, the peakrange and an
+                array for the diffraction data suitable for plotting with
+                matplotlib
+    """
+    full_data = torch.linspace(ttmin-(peakrange/2), ttmax+(peakrange/2),
+                        int(torch.ceil(torch.tensor((ttmax-ttmin+peakrange)/((ttmax-ttmin)/datadim)))),
+                        device=device, dtype=dtype)
+    plotdata = full_data[(full_data >= ttmin) & (full_data <= ttmax)].cpu()
+    x = (full_data[full_data <= ttmin+(peakrange/2)]).clone() - ttmin
+    return full_data, x, plotdata
+
 def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
-                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03, wavelength=1.54056):
+                    perturbation_stddev=0.05, zpemin=-0.03, zpemax=0.03,
+                    wavelength=1.54056):
+    """Generate peak positions on the basis of unit cells and Miller indices.
+    This will automatically perturb the unit cells, keeping their symmetries,
+    and will remove any invalid unit cells. Hence, this function also needs the
+    intensities so that the intensities for invalid cells can be ignored.
+
+    Args:
+        crystal_systems (tensor): The cyrstal systems for the unit cells. These
+            are numbers from 0 - 7, which encode the crystal system in alphabetical
+            order, i.e. cubic = 0, trigonal_rhombohedral = 7. Shape = (batch, 1)
+        hkl (tensor): Miller indices for the reflections. Shape = (batch, n_peaks, 3)
+        intensities (tensor): The intensities for the reflections. Shape = (batch, n_peaks)
+        unit_cells (tensor): The unit cells for the crystals, expressed as
+            lengths and angles in degrees, i.e. [a, b, c, al, be, ga]. Shape = (batch, 6)
+        perturbation_stddev (float, optional): The standard deviation to use for the
+            unit cell perturbations. Defaults to 0.05.
+        zpemin (float, optional): The minimum value for the zero-point error.
+            Defaults to -0.03.
+        zpemax (float, optional): The maximum value for the zero-point error.
+            Defaults to 0.03.
+        wavelength (float, optional): The wavelength for the data generation.
+            Defaults to 1.54056 (Cu Ka1)
+
+    Returns:
+        Tuple: A tuple of tensors containing the two theta positions (batch, npeaks, 1),
+            the reciprocal lattice metric tensors for the perturbed unit cells (batch, 3, 3),
+            the Miller indices for the reflections (batch, n_peaks, 3), the d-spacings for
+            the reflections (batch, n_peaks, 1), the perturbed unit cells (batch, 6)
+    """
     batchsize = intensities.shape[0]
     dtype = intensities.dtype
     device = intensities.device
@@ -17,7 +82,8 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     new_unit_cells = unit_cells + cell_perturbation
     lattice_matrix, valid = positions.get_lattice_matrix(new_unit_cells)
 
-    # Get rid of any invalid unit cells after perturbation
+    # Get rid of any invalid unit cells after perturbation and warn the user
+    # that this has happened.
     if valid.sum() != valid.shape[0]:
         warnings.warn("Invalid cells generated")
         lattice_matrix = lattice_matrix[valid]
@@ -33,7 +99,24 @@ def get_peak_positions(crystal_systems, hkl, intensities, unit_cells,
     return twotheta, reciprocal_lattice_metric_tensor, hkl, intensities, d_spacing, new_unit_cells
 
 def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensities, PO_std=0.1):
-    # Now apply PO perturbation to the peak intensities
+    """Modify a set of input intensities with the March Dollase preferred orientation
+    correction. This function will generate the MD parameters so the user does not
+    need to do this manually. If manual control of the MD parameters is desired,
+    then generate the cosP, sinP and MD factors, then use the apply_MD_PO_correction
+    function from the intensities module.
+
+    Args:
+        hkl (tensor): The Miller indices for the reflections. Shape = (batch, n_peaks, 3)
+        reciprocal_lattice_metric_tensor (tensor): The reciprocal lattice metric tensors
+            for the unit cells. Shape = (batch, 3, 3)
+        dspacing (tensor): The d-spacings from the reflections. Shape = (batch, n_peaks)
+        intensities (tensor): The intensities for the reflections. Shape = (batch, n_peaks)
+        PO_std (float, optional): The standard deviation to use to generate the
+            March Dollase factors. Defaults to 0.1.
+
+    Returns:
+        tensor: the PO-modified intensities. Shape = (batch, n_peaks, 1)
+    """
     cosP, sinP, MDfactor, PO_axis = intensity.get_MD_PO_components(hkl,
                                     reciprocal_lattice_metric_tensor, dspacing, factor_std=PO_std)
     intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP, MDfactor)
@@ -43,6 +126,29 @@ def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
                         V_min=0.0001, V_max=0.0005, W_min=0.0001, W_max=0.0005,
                         Z_min=0.0001, Z_max=0.0005, X_min=0.001, X_max=0.04,
                         Y_min=0.001, Y_max=0.04, shlmax=0.5):
+    """Generate the HWHMs for the gaussian and lorentzian contributions to the peaks
+    as well as generating the asymmetry parameters used in the Finger, Cox and
+    Jephcoat axial divergence profile function.
+
+    Args:
+        twotheta (tensor): The two-theta positons for the peaks. Shape = (batch, n_peaks, 1)
+        U, V, W, X, Y, Z are the peak shape parameters described in this article:
+            https://journals.iucr.org/j/issues/2021/06/00/gj5272/
+            Briefly, U, V, W and Z contribute to the gaussian HWHM, whilst X and Y contribute
+            to the lortentzian HWHM. U and X related to microstrain and Z and Y are related to
+            domain size.
+            The default parameters chosen help to generate peaks with FWHMs close to that
+            seen with laboratory diffraction data.
+        shlmax (float, optional): The asymmetry parameter for the FCJ axial divergence
+            model. This follows the naming and implementation used by GSAS-II. For more
+            detail, see here: https://gsas-ii.readthedocs.io/en/latest/_modules/GSASIIpwd.html#fcjde_gen
+            Defaults to 0.5.
+
+    Returns:
+        tuple: tuple of tensors containing the HWHM for the gaussian and lorentzian components,
+            as well as the asymnmetry parameters for each of the peaks. The HWHM tensors each have
+            shape (batch, n_peaks, 1). The SHL tensor has shape (batch, 1, 1)
+    """
     batchsize = twotheta.shape[0]
     dtype = twotheta.dtype
     device = twotheta.device
@@ -59,6 +165,26 @@ def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
     return hwhm_gaussian, hwhm_lorentzian, shl
 
 def calculate_peaks(x, twotheta, intensities, hwhm_gaussian, hwhm_lorentzian, shl):
+    """Calculates the diffraction peaks by convolving gaussian, lorentzian and
+    FCJ profile functions to produce asymmetric Voigt profiles.
+    Convolution is done by applying a FFT to the individual peaks, then
+    doing pointwise multiplication of the FFT transformed peaks, then taking
+    the inverse FFT.
+
+    Args:
+        x (tensor): the data around which the peak will be generated. This is
+            produced in the get_initial_tensors function, and will by default be
+            centred at zero, with +/- 1.5 degrees twotheta either side.
+            Shape = (n_points_for_peak)
+        twotheta (tensor): The positions of the reflections. Shape = (batch, n_peaks, 1)
+        intensities (tensor): The intensities of the reflections. Shape = (batch, n_peaks, 1)
+        hwhm_gaussian (tensor): The HWHMs for the gaussian components. Shape = (batch, n_peaks, 1)
+        hwhm_lorentzian (tensor): The HWHMs for the lorentzian components. Shape = (batch, n_peaks, 1)
+        shl (tensor): The asymmetry parameter for the patterns. Shape = (batch, 1, 1)
+
+    Returns:
+        tensor: the Voigt peaks. Shape = (batch, n_peaks, n_points_for_peak)
+    """
     peak_G =  shapes.gaussian(x, torch.zeros_like(twotheta), hwhm_gaussian)
     peak_L = shapes.lorentzian(x, torch.zeros_like(twotheta), hwhm_lorentzian)
     peak_FCJ = shapes.fcj(x,twotheta, shl)
@@ -72,18 +198,49 @@ def calculate_peaks(x, twotheta, intensities, hwhm_gaussian, hwhm_lorentzian, sh
     return peak_voigt
 
 def combine_peaks_for_full_patterns(x, full_data, twotheta, peak_voigt, ttmin=4., ttmax=44.):
-    # Finally calculate the full diffraction pattern
+    """Combine several Voigt peaks into a full diffraction pattern.
+
+    Args:
+        x (tensor): x (tensor): the data around which the peak will be generated. This is
+            produced in the get_initial_tensors function, and will by default be
+            centred at zero, with +/- 1.5 degrees twotheta either side.
+            Shape = (n_points_for_peak)
+        full_data (tensor): The full datarange, + an extra bit either side, to allow for
+            peaks that are generated close to the limit of the data range to impact
+            the intensity within the data range.
+            Shape = (datadim + n_points_for_peak)
+        twotheta (tensor): The twotheta positions of the peaks.
+            Shape = (batch, n_peaks, 1)
+        peak_voigt (tensor): The Voigt profiles for each of the peaks.
+            Shape = (batch, n_peaks, n_points_for_peak)
+        ttmin (float, optional): Minimum twotheta angle for the data. Defaults to 4.
+        ttmax (float, optional): Maximum twotheta angle for the data. Defaults to 44.
+
+    Returns:
+        tensor: The full diffraction patterns, normalised such that the minimum
+            intensity is zero, and the maximum is 1 for each of the patterns.
+            Shape = (batch, datadim)
+    """
     twotheta[twotheta == 0] = torch.inf
     twotheta[twotheta < ttmin] = torch.inf
     twotheta[twotheta > ttmax] = torch.inf
     device = x.device
     dtype = x.dtype
+    # Find the start index for where the Voigt profiles should begin in the full
+    # data range.
     peakidx = torch.abs((x[0] + twotheta) - full_data).min(dim=-1).indices
+    # Initialize the full patterns with zero intensity, then add the Voigt profiles.
+    # It will initially have shape (batch, n_peaks, datadim + n_points_for_peak).
     full_pattern = torch.zeros(list(peakidx.shape)+[full_data.shape[0]], device=device, dtype=dtype)
+    # The scatter_ function takes the individual profiles from the peak_voigt tensor
+    # and writes them into the appropriate place in the full_pattern tensor. The
+    # result is then summed down the n_peaks axis (1) to give the full diffraction
+    # patterns, with shape (batch, datadim + n_points_for_peak)
     full_pattern = full_pattern.scatter_(2,
                     peakidx.unsqueeze(2) + torch.arange(x.shape[0], device=device),
                     peak_voigt*torch.isfinite(twotheta))
     full_pattern = full_pattern.sum(dim=1)
+    # Normalize the full_patterns, then cut the data into the twotheta range desired.
     full_pattern -= full_pattern.min(dim=1).values.unsqueeze(1)
     full_pattern /= full_pattern.max(dim=1).values.unsqueeze(1)
     full_pattern = full_pattern[:,(full_data >= ttmin) & (full_data <= ttmax)]
@@ -125,7 +282,7 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
 def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems,
                             hkl, intensities, unit_cells, wavelength=1.54056,
                             ttmin=4, ttmax=44, same_hwhm=True,
-                            max_impurity_intensity = 0.15,
+                            max_impurity_intensity=0.15,
                             min_impurity_intensity=0.01, add_background=True,
                             shuffle_seed=None, add_noise=True):
     """
@@ -203,6 +360,7 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
         torch.manual_seed(shuffle_seed)
     shuffle = torch.randperm(combined_patterns.shape[0])
     if shuffle_seed is not None:
+        # Reset the random seed using the time for further work with pytorch
         torch.manual_seed(int(time.time()*10000000))
     impure = torch.ones(one_third, device=device, dtype=dtype)
     pure = torch.zeros_like(impure)
@@ -236,11 +394,3 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
 
     return combined_patterns, pure_patterns, impure_patterns, pure_impure, cs
 
-def get_initial_tensors(ttmin=4., ttmax=44., peakrange=3, datadim=2048,
-                        device=torch.device("cpu"), dtype=torch.float32):
-    full_data = torch.linspace(ttmin-(peakrange/2), ttmax+(peakrange/2),
-                        int(torch.ceil(torch.tensor((ttmax-ttmin+peakrange)/((ttmax-ttmin)/datadim)))),
-                        device=device, dtype=dtype)
-    plotdata = full_data[(full_data >= ttmin) & (full_data <= ttmax)].cpu()
-    x = (full_data[full_data <= ttmin+(peakrange/2)]).clone() - ttmin
-    return full_data, x, plotdata

@@ -42,8 +42,9 @@ def get_MD_PO_components(hkl, reciprocal_lattice_metric_tensor, dspacing, factor
     sinP = torch.sqrt(one_minus_cosP_sqd)
 
     # MD factor = 1 means no PO. Use a normal distribution with std given in the
-    # argument centred at 1.
-    factor = 1 + (torch.randn((batchsize,1),device=device,dtype=dtype) * factor_std)
+    # argument centred at 1. Using the absolute value here to ensure positive
+    # factors
+    factor = torch.abs(1. + (torch.randn((batchsize,1),device=device,dtype=dtype) * factor_std))
 
     return cosP, sinP, factor, PO_axis
 
