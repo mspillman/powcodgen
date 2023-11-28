@@ -130,7 +130,7 @@ def get_PO_intensities(hkl, reciprocal_lattice_metric_tensor, dspacing, intensit
                                     factor_std=PO_std)
     intensities = intensity.apply_MD_PO_correction(intensities, cosP, sinP,
                                                     MDfactor)
-    return torch.nan_to_num(intensities).unsqueeze(2)
+    return torch.nan_to_num(intensities)
 
 def get_peak_shape_params(twotheta, U_min=0.0001, U_max=0.0005,
                         V_min=0.0001, V_max=0.0005, W_min=0.0001, W_max=0.0005,
@@ -307,7 +307,7 @@ def calculate_diffraction_patterns(x, full_data, crystal_systems, hkl,
 def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems,
     hkl, intensities, unit_cells, wavelength=1.54056, ttmin=4, ttmax=44,
     same_hwhm=True, max_impurity_intensity=0.15, min_impurity_intensity=0.01,
-    add_background=True, shuffle_seed=None, add_noise=True):
+    add_background=True, shuffle_seed=None, add_noise=True, start_mask=True):
     """
     Expect the input tensors to have their first dimension to be of size batchsize
     The first third of the batch will be used for the pure patterns
@@ -398,7 +398,8 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure_patterns = pure_patterns[shuffle]
     impure_patterns = impure_patterns[shuffle]
     pure_impure = pure_impure[shuffle]
-    cs = new_unit_cells[:2*one_third][shuffle]
+    cs = crystal_systems[:2*one_third][shuffle]
+    cell = new_unit_cells[:2*one_third][shuffle]
 
     notnan = (torch.isnan(combined_patterns).sum(dim=-1) == 0)
     combined_patterns = combined_patterns[notnan]
@@ -407,6 +408,7 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     pure_patterns = pure_patterns[notnan]
     pure_impure = pure_impure[notnan]
     cs = cs[notnan]
+    cell = cell[notnan]
     if torch.isnan(combined_patterns).sum() > 1:
         print("NaNs in training data generation - ",
                 torch.isnan(combined_patterns).sum(dim=-1))
@@ -414,12 +416,12 @@ def calculate_diffraction_patterns_with_impurities(x, full_data, crystal_systems
     # Zero out the start of the pattern, and set those elements equal to the value
     # of the first non-zero element, as an additional source of augmentation.
     # This will only happen in half of the batches.
-    if torch.randint(0,2,(1,)).sum() > 0:
+    if (torch.randint(0,2,(1,)).sum() > 0) and start_mask:
         neg_mask = (torch.arange(combined_patterns.shape[1],
                     device=device).unsqueeze(1) < first_nonzero.squeeze()).type(dtype).T
         pos_mask = 1-neg_mask
         combined_patterns *= pos_mask
         combined_patterns += neg_mask * torch.gather(combined_patterns,1,first_nonzero.unsqueeze(1))
 
-    return combined_patterns, pure_patterns, impure_patterns, pure_impure, cs
+    return combined_patterns, pure_patterns, impure_patterns, pure_impure, cs, cell
 
