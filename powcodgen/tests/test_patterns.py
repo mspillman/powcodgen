@@ -42,8 +42,8 @@ class TestPatternsFunctions(unittest.TestCase):
         rmt = peakpos[1]
         dspacing = peakpos[-2]
         outputs = get_PO_intensities(self.hkl, rmt, dspacing, self.intensities)
-        self.assertEqual(outputs.shape, self.intensities.unsqueeze(2).shape)
-        self.assertFalse(torch.allclose(outputs, self.intensities.unsqueeze(2)))
+        self.assertEqual(outputs.shape, self.intensities.shape)
+        self.assertFalse(torch.allclose(outputs, self.intensities))
 
     def test_get_peak_shape_params(self):
         peakpos = get_peak_positions(self.crystal_systems, self.hkl, self.intensities, self.unit_cells)
