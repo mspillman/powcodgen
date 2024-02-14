@@ -13,5 +13,3 @@ Several method of data augmentation have been implemented:
 - zero-point errors
 
 [See this post for more information](https://mspillman.github.io/blog/posts/2023-09-08-Generating-synthetic-PXRD-data.html#introduction)
-
-More detailed instructions for use coming soon.
